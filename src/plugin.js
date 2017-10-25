@@ -2,12 +2,12 @@ import merge from 'lodash.merge';
 import objectPath from 'object-path';
 
 const defaultReducer = (state, paths) =>
-  (paths.length === 0
+  paths.length === 0
     ? state
     : paths.reduce((substate, path) => {
         objectPath.set(substate, path, objectPath.get(state, path));
         return substate;
-      }, {}));
+      }, {});
 
 const canWriteStorage = storage => {
   try {
@@ -24,16 +24,21 @@ export default function createPersistedState(
     key = 'vuex',
     paths = [],
     getState = (key, storage) => {
-      const value = storage.getItem(key);
+      return new Promise((resolve, reject) => {
+        const value = storage.getItem(key);
 
-      try {
-        return value && value !== 'undefined' ? JSON.parse(value) : undefined;
-      } catch (err) {
-        return undefined;
-      }
+        try {
+          resolve(
+            value && value !== 'undefined' ? JSON.parse(value) : undefined
+          );
+        } catch (err) {
+          reject(undefined);
+        }
+      });
     },
-    setState = (key, state, storage) =>
-      storage.setItem(key, JSON.stringify(state)),
+    setState = (key, state, storage) => {
+      storage.setItem(key, JSON.stringify(state));
+    },
     reducer = defaultReducer,
     storage = window && window.localStorage,
     filter = () => true,
@@ -45,10 +50,11 @@ export default function createPersistedState(
   }
 
   return store => {
-    const savedState = getState(key, storage);
-    if (typeof savedState === 'object') {
-      store.replaceState(merge({}, store.state, savedState));
-    }
+    getState(key, storage).then(savedState => {
+      if (typeof savedState === 'object') {
+        store.replaceState(merge({}, store.state, savedState));
+      }
+    });
 
     subscriber(store)((mutation, state) => {
       if (filter(mutation)) {
